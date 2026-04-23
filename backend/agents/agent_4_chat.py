@@ -81,6 +81,38 @@ TOOLS = [
         ),
         "input_schema": {"type": "object", "properties": {}, "required": []},
     },
+    {
+        "name": "simulate_scenario",
+        "description": (
+            "Run a what-if simulation on the current disruption. Computes how SKU gap_days, "
+            "stockout timelines, and risk scores change under different assumptions — without "
+            "altering real state. Call this for ANY question containing 'what if', 'what would "
+            "happen if', 'suppose', 'scenario where', 'if the disruption lasts', 'if we air "
+            "freight', 'if demand spikes', or any hypothetical variation of the current situation."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "scenario_description": {
+                    "type": "string",
+                    "description": "Plain English description of the hypothetical (e.g. 'disruption lasts 60 days', 'demand spikes 40%', 'we use air freight cutting lead time to 7 days')",
+                },
+                "disruption_extension_days": {
+                    "type": "integer",
+                    "description": "Add N extra days to current supplier lead times to model extended disruption",
+                },
+                "demand_multiplier": {
+                    "type": "number",
+                    "description": "Multiply daily SKU consumption by this factor (e.g. 1.5 = +50% demand spike, 0.7 = -30% demand reduction)",
+                },
+                "lead_time_override_days": {
+                    "type": "integer",
+                    "description": "Override lead time to this fixed value for all affected SKUs (e.g. 7 for air freight, 3 for local safety stock)",
+                },
+            },
+            "required": ["scenario_description"],
+        },
+    },
 ]
 
 
@@ -125,6 +157,65 @@ def _execute_tool(name: str, tool_input: dict, state: SupplyChainState, scoring_
         if not hits:
             return "No matching messages found in session history."
         return json.dumps([{"role": m["role"], "content": m["content"][:300]} for m in hits[:5]])
+
+    if name == "simulate_scenario":
+        sku_risks = state.get("sku_risks", [])
+        if not sku_risks:
+            return json.dumps({"error": "No SKU risk data available. Run score_at_risk_skus first."})
+
+        description = tool_input.get("scenario_description", "")
+        extension_days = int(tool_input.get("disruption_extension_days") or 0)
+        demand_mult = float(tool_input.get("demand_multiplier") or 1.0)
+        lead_override = tool_input.get("lead_time_override_days")
+
+        impacts = []
+        for sku in sku_risks:
+            sku_id = sku.get("sku_id", "?")
+            stock = sku.get("stock_on_hand") or sku.get("current_stock") or 0
+            daily = sku.get("daily_usage") or sku.get("daily_consumption") or 1
+            current_lead = sku.get("lead_time_days") or sku.get("lead_time") or 21
+            current_gap = sku.get("gap_days") or 0
+
+            sim_daily = daily * demand_mult
+            sim_lead = int(lead_override) if lead_override is not None else current_lead + extension_days
+            sim_days_of_stock = (stock / sim_daily) if sim_daily > 0 else 999
+            sim_gap = round(sim_days_of_stock - sim_lead, 1)
+            sim_risk = round(max(0.0, min(1.0, 0.5 + (-sim_gap / 30))), 3)
+            delta = round(sim_gap - current_gap, 1)
+
+            impacts.append({
+                "sku_id": sku_id,
+                "current": {
+                    "gap_days": round(current_gap, 1),
+                    "lead_time_days": current_lead,
+                    "daily_usage": round(daily, 1),
+                    "risk_score": round(sku.get("risk_score", 0), 3),
+                },
+                "simulated": {
+                    "gap_days": sim_gap,
+                    "lead_time_days": sim_lead,
+                    "daily_usage": round(sim_daily, 1),
+                    "risk_score": sim_risk,
+                },
+                "delta_gap_days": delta,
+                "verdict": (
+                    "WORSE — stockout window widens" if delta < -2
+                    else "BETTER — gap improves" if delta > 2
+                    else "MARGINAL — minimal change"
+                ),
+            })
+
+        still_at_risk = sum(1 for r in impacts if r["simulated"]["gap_days"] < 0)
+        return json.dumps({
+            "scenario": description,
+            "parameters_applied": {
+                "disruption_extension_days": extension_days,
+                "demand_multiplier": demand_mult,
+                "lead_time_override_days": lead_override,
+            },
+            "sku_impacts": impacts,
+            "summary": f"{still_at_risk} of {len(impacts)} SKUs still in stockout range under this scenario",
+        })
 
     if name == "get_analysis_details":
         sku_risks = state.get("sku_risks", [])
@@ -222,6 +313,12 @@ def run(state: SupplyChainState) -> dict:
         "- WHAT happened / WHAT is the disruption? → use the signal + compiled alert above; "
         "call search_history if you need historical context on the event type.\n"
         "- WHAT SHOULD WE DO / recommendations? → present the compiled alert's recommended action.\n"
+        "- WHAT IF / hypotheticals? → call simulate_scenario with the appropriate parameters. "
+        "Map the question: 'lasts X days longer' → disruption_extension_days=X; "
+        "'demand spikes Y%' → demand_multiplier=1+Y/100; "
+        "'air freight / cut lead time to Z days' → lead_time_override_days=Z. "
+        "After the tool returns, interpret the delta_gap_days and verdict fields in plain language — "
+        "tell the operator concretely which SKUs get worse, which improve, and by how many days.\n"
         "- Questions about earlier conversation → call recall_past_session.\n\n"
         "TOOLS (when to call each):\n"
         "- score_at_risk_skus: call first if SKUs are not yet scored.\n"
@@ -229,6 +326,7 @@ def run(state: SupplyChainState) -> dict:
         "- search_history: ALWAYS call for 'why', 'has this happened before', or historical pattern questions. "
         "Uses long-term mem0 memory across past sessions.\n"
         "- get_analysis_details: call for 'how', 'why this score', 'explain the numbers', or pipeline trace questions.\n"
+        "- simulate_scenario: call for ALL what-if, hypothetical, or 'what would happen if' questions.\n"
         "- request_alternatives: ONLY when operator explicitly asks to find alternative suppliers.\n"
         "- recall_past_session: look up what was said earlier in this chat session."
     )
