@@ -1,0 +1,53 @@
+[
+  {
+    "text": "Taiwan port strikes historically add 14-21 days to shipping lead times. In 2023-Q3 a Keelung port strike lasted 18 days. Severity typically 0.75-0.90. Affected SKUs sourced through Taiwan tier-1 suppliers.",
+    "metadata": {
+      "type": "historical_pattern",
+      "entity": "Taiwan port",
+      "location": "Keelung",
+      "country": "TW",
+      "avg_disruption_days": 16,
+      "false_positive_rate": 0.05
+    }
+  },
+  {
+    "text": "Zhengzhou flooding events add approximately 14 days to lead times for suppliers sourcing from Henan province. Historical events: 2021 (severe, 21 days), 2023 (moderate, 10 days). SinoRaw Ltd in Zhengzhou is a known tier-2 supplier for European electronics assemblers.",
+    "metadata": {
+      "type": "historical_pattern",
+      "entity": "Zhengzhou flooding",
+      "location": "Zhengzhou",
+      "country": "CN",
+      "avg_disruption_days": 14,
+      "false_positive_rate": 0.08
+    }
+  },
+  {
+    "text": "Rotterdam fog events are almost always false positives for supply chain disruption. Port operations resume within 6 hours in 94% of cases. Do not raise alerts for Rotterdam fog alone — severity typically 0.10-0.20.",
+    "metadata": {
+      "type": "false_positive_pattern",
+      "entity": "Rotterdam fog",
+      "location": "Rotterdam",
+      "country": "NL",
+      "avg_disruption_days": 0.25,
+      "false_positive_rate": 0.94
+    }
+  },
+  {
+    "text": "VN-FAB-03 in Vietnam successfully substituted for TaiwanChipCo during the 2023 Taiwan strait tensions. Transition took 4 days, lead time was 14 days, quality metrics met 97% of spec.",
+    "metadata": {
+      "type": "resolution_pattern",
+      "entity": "VN-FAB-03",
+      "sku": "SKU-MCU-01",
+      "outcome": "successful_substitution",
+      "transition_days": 4
+    }
+  },
+  {
+    "text": "Operator preference: prioritize SKU-MCU-01 alerts above all others. It is the most critical component with no buffer stock policy. Always recommend alternatives immediately when gap_days < -7.",
+    "metadata": {
+      "type": "operator_preference",
+      "sku_priority": "SKU-MCU-01",
+      "alert_threshold_gap_days": -7
+    }
+  }
+]
