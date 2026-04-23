@@ -55,9 +55,10 @@ Routing rules (apply in order):
 2. If severity_score > 0 and < 0.2 → route to no_alert
 3. If supplier_mapping_done is false → route to supplier_mapping
 4. If risk_scored is false → route to agent_4
-5. If alternatives_requested is true and alternatives_found is false → route to agent_5
-6. If final_alert is not set → route to report_compiler
-7. Otherwise → END
+5. If risk_scored is true and severity_score >= 0.5 and alternatives_found is false → route to agent_5
+6. If alternatives_requested is true and alternatives_found is false → route to agent_5
+7. If final_alert is not set → route to report_compiler
+8. Otherwise → END
 
 Never skip a step. Always call the route tool — no prose response."""
 
