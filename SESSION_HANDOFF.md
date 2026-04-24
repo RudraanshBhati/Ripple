@@ -46,6 +46,15 @@ Two layers:
 1. **URL dedup** — before LLM call, articles with URLs already in MongoDB are skipped (`get_existing_article_urls`)
 2. **Signal hash dedup** — SHA-256 first 300 chars of signal text, stored in `signal_hashes` collection. Prevents re-running the pipeline on the same event.
 
+### IMPORTANT: Dashboard load vs. pipeline processing are separate
+
+**The news dashboard loads instantly.** `GET /api/news` reads directly from MongoDB.
+Articles are stored to MongoDB after the batch LLM classification step — before any pipeline runs.
+If you see 45 novel signals, the dashboard still loads immediately.
+
+The pipeline running 45 times is a background job that populates the **alerts feed**, not the news columns.
+Do not conflate scraper processing time with dashboard load time — they are independent.
+
 ### Pipeline invocation (per novel signal)
 
 Each new, unseen signal runs through the full LangGraph pipeline synchronously via `_invoke_pipeline_sync()`:
